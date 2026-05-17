@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "mixiq": {
+      "command": "node",
+      "args": ["/absolute/path/to/mixiq/dist/server.js"],
+      "env": {
+        "MIXIQ_HOME": "~/.mixiq",
+        "MIXIQ_LOG_LEVEL": "info"
+      }
+    }
+  }
+}

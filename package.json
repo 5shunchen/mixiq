@@ -1,8 +1,18 @@
 {
-  "name": "mixiq",
+  "name": "@5shunchen/mixiq",
   "version": "1.0.0",
-  "description": "AI-native agent development and operations platform with MCP protocol",
+  "description": "MixIQ - AI-native Agent Development & Operations MCP Server for Claude Code",
   "main": "dist/server.js",
+  "bin": {
+    "mixiq": "./dist/server.js"
+  },
+  "mcp": {
+    "name": "mixiq",
+    "version": "1.0.0",
+    "description": "AI-native agent development and operations platform with 37 MCP tools",
+    "tools": 37,
+    "protocols": ["stdio"]
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
@@ -10,7 +20,10 @@
     "test": "jest",
     "test:unit": "jest tests/unit/",
     "test:integration": "jest tests/integration/",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "install:mcp": "node scripts/install-mcp.js",
+    "install:cli": "npm link",
+    "postinstall": "npm run build"
   },
   "repository": {
     "type": "git",
@@ -18,10 +31,16 @@
   },
   "keywords": [
     "mcp",
+    "claude",
+    "claude-code",
     "ai",
     "agent",
     "devops",
-    "ssh"
+    "ssh",
+    "git",
+    "automation",
+    "workflow",
+    "orchestration"
   ],
   "author": "MixIQ Team",
   "license": "MIT",
@@ -30,6 +49,9 @@
     "url": "https://github.com/5shunchen/mixiq/issues"
   },
   "homepage": "https://github.com/5shunchen/mixiq#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
     "node-ssh": "^13.2.0",
@@ -47,5 +69,11 @@
     "ts-jest": "^29.4.9",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
-  }
+  },
+  "files": [
+    "dist/**/*",
+    "scripts/**/*",
+    "config/**/*",
+    "README.md"
+  ]
 }

@@ -1,12 +1,53 @@
-# MixIQ - AI 原生智能体开发运维中台
+# MixIQ - Claude Code 开发运维插件
 
 <p align="center">
-  <strong>AI-native Agent Development & Operations Platform with MCP Protocol</strong>
+  <strong>🔌 Claude Code MCP Plugin - AI-native DevOps Platform</strong>
 </p>
 
 <p align="center">
-  通过 MCP 协议统一封装项目管理、代码仓库、分支管理、环境部署、任务编排等能力，让 AI Agent 能够理解并执行完整的开发运维全流程。
+  <a href="#-一键安装">一键安装</a> •
+  <a href="#-功能概览">功能概览</a> •
+  <a href="#-mcp-工具列表">工具列表</a> •
+  <a href="https://github.com/5shunchen/mixiq">GitHub</a>
 </p>
+
+---
+
+## 🚀 一键安装
+
+### 方法一：自动安装脚本（推荐）
+
+```bash
+# 克隆项目并自动配置到 Claude Code
+git clone https://github.com/5shunchen/mixiq.git
+cd mixiq
+npm install
+npm run build
+npm run install:mcp
+```
+
+### 方法二：curl 一键安装
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/5shunchen/mixiq/main/scripts/install.sh | bash
+```
+
+### 方法三：手动配置
+
+在 `~/.claude/mcp/config.json` 中添加：
+
+```json
+{
+  "mcpServers": {
+    "mixiq": {
+      "command": "node",
+      "args": ["/path/to/mixiq/dist/server.js"]
+    }
+  }
+}
+```
+
+**安装后重启 Claude Code，输入 `/mcp` 验证连接。**
 
 ---
 
@@ -76,28 +117,83 @@
 - Node.js 18.x 或更高版本
 - npm 9.x 或更高版本
 - Git 2.30+
+- Claude Code 最新版
 
-### 快速开始
+---
+
+### 🔌 Claude Code 插件安装
+
+#### ✅ 自动安装（推荐）
 
 ```bash
-# 1. 克隆项目
 git clone https://github.com/5shunchen/mixiq.git
 cd mixiq
-
-# 2. 安装依赖
 npm install
-
-# 3. 构建项目
 npm run build
-
-# 4. 运行测试（可选，验证安装）
-npm test
-
-# 5. 启动 MCP 服务器
-npm start
+npm run install:mcp  # 自动配置到 Claude Code
 ```
 
-### 开发模式
+#### ⚡ 一键脚本安装
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/5shunchen/mixiq/main/scripts/install.sh | bash
+```
+
+#### 🔧 手动配置
+
+编辑 Claude Code MCP 配置文件：
+
+**macOS / Linux**: `~/.claude/mcp/config.json`
+**Windows**: `%USERPROFILE%\.claude\mcp\config.json`
+
+```json
+{
+  "mcpServers": {
+    "mixiq": {
+      "command": "node",
+      "args": ["/absolute/path/to/mixiq/dist/server.js"],
+      "env": {
+        "MIXIQ_HOME": "~/.mixiq",
+        "MIXIQ_LOG_LEVEL": "info"
+      }
+    }
+  }
+}
+```
+
+#### ✅ 验证安装
+
+1. 重启 Claude Code
+2. 输入 `/mcp` 命令查看已连接的 MCP 服务器
+3. 看到 `mixiq` 表示安装成功
+
+---
+
+### 🧪 验证 MCP 服务器
+
+```bash
+cd mixiq
+node scripts/verify-mcp.js
+```
+
+---
+
+### 🔨 开发模式
+
+```bash
+# 使用 ts-node 直接运行（开发调试）
+npm run dev
+
+# 运行测试
+npm test
+
+# 查看测试覆盖率
+npm run test:coverage
+```
+
+---
+
+### 📦 手动构建
 
 ```bash
 # 使用 ts-node 直接运行（支持热重载）
@@ -387,6 +483,101 @@ npm test -- tests/unit/orchestrator.test.ts
 | 任务编排 | 93+78 | 95.4% |
 | **总计** | **857** | **核心模块 > 90%** |
 
+## 💡 Claude Code 使用示例
+
+安装完成后，在 Claude Code 中可以直接对话使用：
+
+**示例对话 1：管理 Git 仓库**
+```
+帮我查看当前项目的 Git 状态，然后创建一个新分支"feature/new-tool"
+```
+
+**示例对话 2：部署项目**
+```
+帮我部署当前项目到生产环境，先运行健康检查
+```
+
+**示例对话 3：工作流编排**
+```
+运行完整的 CI/CD 工作流，从测试到部署
+```
+
+---
+
+## 📁 目录结构
+
+```
+mixiq/
+├── src/                          # 源代码
+│   ├── server.ts                 # MCP 服务器入口
+│   ├── types/                    # 类型定义
+│   ├── utils/                    # 工具函数
+│   ├── db/                       # 数据库
+│   ├── ssh/                      # SSH 连接
+│   ├── managers/                 # 业务管理器
+│   ├── tools/                    # MCP 工具定义
+│   └── gateway/                  # MCP 协议网关
+├── scripts/                      # 安装脚本
+│   ├── install-mcp.js            # MCP 自动安装
+│   ├── install.sh                # 一键安装脚本
+│   └── verify-mcp.js             # 服务器验证
+├── config/                       # 配置文件
+├── tests/                        # 测试
+├── dist/                         # 编译输出
+└── package.json
+```
+
+---
+
+## ⚙️  配置文件
+
+MixIQ 支持以下环境变量配置（可选）：
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `MIXIQ_HOME` | 数据目录 | `~/.mixiq` |
+| `MIXIQ_DB_PATH` | 数据库路径 | `~/.mixiq/mixiq.db` |
+| `MIXIQ_SSH_TIMEOUT` | SSH 超时（秒） | `30` |
+| `MIXIQ_MAX_SSH_CONNECTIONS` | 最大 SSH 连接数 | `10` |
+| `MIXIQ_LOG_LEVEL` | 日志级别 | `info` |
+
+---
+
+## 🆘 常见问题
+
+### Q: 安装后 Claude Code 找不到 MixIQ？
+A: 检查以下几点：
+1. 确保已运行 `npm run build` 编译项目
+2. 检查 `~/.claude/mcp/config.json` 配置文件路径是否正确
+3. 重启 Claude Code
+4. 输入 `/mcp` 查看已连接的服务器
+
+### Q: 如何更新 MixIQ？
+```bash
+cd /path/to/mixiq
+git pull
+npm install
+npm run build
+# 重启 Claude Code
+```
+
+### Q: 如何卸载？
+```bash
+# 编辑配置文件删除 mixiq 部分
+code ~/.claude/mcp/config.json
+
+# 然后删除项目目录
+rm -rf /path/to/mixiq
+```
+
+### Q: 服务器启动失败？
+运行验证脚本检查问题：
+```bash
+node scripts/verify-mcp.js
+```
+
+---
+
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request！
@@ -397,15 +588,22 @@ npm test -- tests/unit/orchestrator.test.ts
 4. 推送到分支 (`git push origin feat/amazing-feature`)
 5. 开启 Pull Request
 
+---
+
 ## 📄 许可证
 
 MIT License - 详见 [LICENSE](LICENSE) 文件
+
+---
 
 ## 🔗 相关链接
 
 - **GitHub**: https://github.com/5shunchen/mixiq
 - **Releases**: https://github.com/5shunchen/mixiq/releases
 - **Issues**: https://github.com/5shunchen/mixiq/issues
+- **Claude Code**: https://claude.ai/code
+
+---
 
 ## 📋 版本路线图
 
@@ -414,6 +612,7 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 - ✅ **v0.3.0** - 环境管理与部署
 - ✅ **v0.4.0** - 智能体管理
 - ✅ **v1.0.0** - 任务编排与模板（当前版本）
+- 🔄 **v1.1.0** - Claude Code 插件优化（进行中）
 
 ---
 
