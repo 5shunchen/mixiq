@@ -334,7 +334,7 @@ describe('MixIQDatabase', () => {
       const context = {
         currentTask: 'test task',
         conversationHistory: [
-          { role: 'user' as const, content: 'hello', timestamp: new Date() },
+          { id: 'msg-1', role: 'user' as const, content: 'hello', timestamp: new Date() },
         ],
         workspaceState: { file1: 'modified' },
         metadata: { key: 'value' },
@@ -349,9 +349,13 @@ describe('MixIQDatabase', () => {
       const agent = db.insert(TABLE_NAMES.AGENT_INSTANCES, {
         project_id: project.id,
         agent_type: 'developer',
+        token: 'test-token-123',
         allowed_tools: [],
-        status: 'idle',
+        status: 'active',
         context: context,
+        history: [],
+        audit_logs: [],
+        config: {},
       }) as AgentInstance;
 
       expect(typeof agent.context).toBe('object');

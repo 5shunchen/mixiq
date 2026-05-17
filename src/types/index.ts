@@ -81,24 +81,7 @@ export interface MCPTool {
   handler: string;
 }
 
-/**
- * Agent 上下文
- */
-export interface AgentContext {
-  currentTask?: string;
-  conversationHistory: Message[];
-  workspaceState?: Record<string, unknown>;
-  metadata: Record<string, string>;
-}
 
-/**
- * 消息
- */
-export interface Message {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp: Date;
-}
 
 /**
  * 项目实体
@@ -113,6 +96,11 @@ export interface Project {
 }
 
 /**
+ * 部署状态枚举
+ */
+export type DeploymentStatus = 'pending' | 'running' | 'success' | 'failed' | 'rolled_back';
+
+/**
  * 环境实体
  */
 export interface Environment {
@@ -120,8 +108,79 @@ export interface Environment {
   project_id: string;
   name: string;
   servers: SSHServer[];
+  config?: EnvironmentConfig;
   created_at: Date;
   updated_at: Date;
+}
+
+/**
+ * 环境配置
+ */
+export interface EnvironmentConfig {
+  buildCommand?: string;
+  deployScript?: string;
+  remotePath?: string;
+  healthCheckEndpoint?: string;
+  healthCheckTimeout?: number;
+  variables?: Record<string, string>;
+}
+
+/**
+ * Agent 状态枚举
+ */
+export type AgentStatus = 'inactive' | 'active' | 'paused' | 'error';
+
+/**
+ * Agent 上下文数据
+ */
+export interface Context {
+  [key: string]: unknown;
+  conversationHistory: Message[];
+  currentTask?: string;
+  workspaceState?: Record<string, unknown>;
+  metadata: Record<string, string>;
+}
+
+/**
+ * Agent 消息
+ */
+export interface Message {
+  id: string;
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content: string;
+  timestamp: Date;
+  toolCallId?: string;
+  toolName?: string;
+}
+
+/**
+ * Agent 审计日志条目
+ */
+export interface AgentAuditLog {
+  id: string;
+  agent_id: string;
+  action: string;
+  details?: Record<string, unknown>;
+  timestamp: Date;
+}
+
+/**
+ * Agent 配置选项
+ */
+export interface AgentConfig {
+  maxHistoryLength?: number;
+  timeout?: number;
+  allowedTools?: string[];
+  metadata?: Record<string, string>;
+}
+
+/**
+ * Agent 创建结果
+ */
+export interface AgentCreateResult {
+  agent_id: string;
+  token: string;
+  status: AgentStatus;
 }
 
 /**
@@ -131,9 +190,13 @@ export interface AgentInstance {
   id: string;
   project_id: string;
   agent_type: string;
-  allowed_tools: MCPTool[];
-  status: 'idle' | 'running' | 'paused' | 'stopped' | 'error';
-  context: AgentContext;
+  token: string;
+  allowed_tools: string[];
+  status: AgentStatus;
+  context: Context;
+  history: Message[];
+  audit_logs: AgentAuditLog[];
+  config: AgentConfig;
   created_at: Date;
   updated_at: Date;
 }
@@ -146,10 +209,67 @@ export interface Deployment {
   project_id: string;
   env_name: string;
   branch: string;
-  status: 'pending' | 'deploying' | 'success' | 'failed' | 'rolled_back';
+  status: DeploymentStatus;
   commit_sha: string;
+  output?: string;
+  error?: string;
   created_at: Date;
   updated_at: Date;
+}
+
+/**
+ * 部署结果
+ */
+export interface DeploymentResult {
+  deploymentId: string;
+  status: DeploymentStatus;
+  healthCheckResult: HealthCheckResult;
+  output?: string;
+  error?: string;
+}
+
+/**
+ * 部署选项
+ */
+export interface DeployOptions {
+  buildCommand?: string;
+  deployScript?: string;
+  skipBuild?: boolean;
+  skipHealthCheck?: boolean;
+  timeout?: number;
+}
+
+/**
+ * 健康检查结果
+ */
+export interface HealthCheckResult {
+  healthy: boolean;
+  serverResults: ServerHealthCheck[];
+  totalServers: number;
+  healthyServers: number;
+  message?: string;
+}
+
+/**
+ * 服务器健康检查结果
+ */
+export interface ServerHealthCheck {
+  host: string;
+  reachable: boolean;
+  serviceRunning?: boolean;
+  error?: string;
+  responseTime?: number;
+}
+
+/**
+ * 日志查询选项
+ */
+export interface LogQueryOptions {
+  service?: string;
+  lines?: number;
+  filter?: string;
+  since?: Date;
+  until?: Date;
 }
 
 /**
@@ -160,7 +280,202 @@ export const TABLE_NAMES = {
   ENVIRONMENTS: 'environments',
   AGENT_INSTANCES: 'agent_instances',
   DEPLOYMENTS: 'deployments',
+  WORKFLOWS: 'workflows',
+  WORKFLOW_RUNS: 'workflow_runs',
 } as const;
+
+// ==================== 工作流编排类型 ====================
+
+/**
+ * 工作流状态枚举
+ */
+export type WorkflowStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+/**
+ * 步骤类型枚举
+ */
+export type StepType = 'shell' | 'git' | 'deploy' | 'tool' | 'condition' | 'parallel' | 'loop' | 'wait';
+
+/**
+ * Git 操作子类型
+ */
+export type GitOperationType = 'clone' | 'commit' | 'push' | 'pull' | 'branch' | 'checkout' | 'merge' | 'status' | 'log';
+
+/**
+ * 步骤重试配置
+ */
+export interface StepRetryConfig {
+  maxAttempts: number;
+  delayMs?: number;
+  backoffMultiplier?: number;
+}
+
+/**
+ * 工作流步骤定义
+ */
+export interface WorkflowStep {
+  id: string;
+  name: string;
+  type: StepType;
+  description?: string;
+  timeout?: number;
+  retry?: StepRetryConfig;
+  continueOnError?: boolean;
+  condition?: string;
+  dependsOn?: string[];
+
+  // shell 步骤配置
+  command?: string;
+  args?: string[];
+  workingDirectory?: string;
+  remoteServer?: string;
+
+  // git 步骤配置
+  gitOperation?: GitOperationType;
+  repoUrl?: string;
+  targetPath?: string;
+  branchName?: string;
+  commitMessage?: string;
+  remoteName?: string;
+
+  // deploy 步骤配置
+  environmentName?: string;
+  buildCommand?: string;
+  skipBuild?: boolean;
+
+  // tool 步骤配置
+  toolName?: string;
+  toolParams?: Record<string, unknown>;
+
+  // condition 步骤配置
+  if?: string;
+  then?: WorkflowStep[];
+  else?: WorkflowStep[];
+
+  // parallel 步骤配置
+  parallel?: WorkflowStep[];
+  maxConcurrency?: number;
+
+  // loop 步骤配置
+  loopType?: 'for' | 'while';
+  iterations?: number;
+  iteratorVar?: string;
+  items?: unknown[];
+  whileCondition?: string;
+  do?: WorkflowStep[];
+
+  // wait 步骤配置
+  waitMs?: number;
+  waitUntil?: string;
+
+  // 输出变量配置
+  outputVar?: string;
+}
+
+/**
+ * 步骤执行结果
+ */
+export interface StepExecutionResult {
+  stepId: string;
+  stepName: string;
+  status: WorkflowStatus;
+  startTime: Date;
+  endTime?: Date;
+  durationMs?: number;
+  attempt: number;
+  output?: unknown;
+  error?: string;
+  errorStack?: string;
+  contextSnapshot?: Record<string, unknown>;
+}
+
+/**
+ * 工作流定义
+ */
+export interface Workflow {
+  id: string;
+  name: string;
+  description?: string;
+  version: string;
+  isBuiltIn: boolean;
+  isEnabled: boolean;
+  parameters?: Record<string, {
+    type: 'string' | 'number' | 'boolean' | 'object';
+    required?: boolean;
+    default?: unknown;
+    description?: string;
+  }>;
+  steps: WorkflowStep[];
+  tags?: string[];
+  created_at: Date;
+  updated_at: Date;
+}
+
+/**
+ * 工作流执行记录
+ */
+export interface WorkflowRun {
+  id: string;
+  workflowId: string;
+  workflowName: string;
+  projectId?: string;
+  status: WorkflowStatus;
+  parameters?: Record<string, unknown>;
+  context: Record<string, unknown>;
+  steps: StepExecutionResult[];
+  result?: unknown;
+  error?: string;
+  errorStack?: string;
+  startTime: Date;
+  endTime?: Date;
+  durationMs?: number;
+  cancelledAt?: Date;
+  cancelledBy?: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+/**
+ * 工作流创建参数
+ */
+export type WorkflowCreateInput = {
+  name: string;
+  description?: string;
+  version?: string;
+  isEnabled?: boolean;
+  parameters?: Record<string, {
+    type: 'string' | 'number' | 'boolean' | 'object';
+    required?: boolean;
+    default?: unknown;
+    description?: string;
+  }>;
+  steps: WorkflowStep[];
+  tags?: string[];
+};
+
+/**
+ * 工作流执行选项
+ */
+export interface WorkflowRunOptions {
+  projectId?: string;
+  parameters?: Record<string, unknown>;
+  timeout?: number;
+  dryRun?: boolean;
+}
+
+/**
+ * 工作流执行上下文
+ */
+export interface WorkflowExecutionContext {
+  runId: string;
+  workflowId: string;
+  projectId?: string;
+  parameters: Record<string, unknown>;
+  variables: Record<string, unknown>;
+  startTime: Date;
+  isCancelled: boolean;
+  stepResults: Map<string, StepExecutionResult>;
+}
 
 /**
  * 创建操作类型（排除自动生成字段）
@@ -302,6 +617,223 @@ export type ToolHandler = (params: Record<string, unknown>) => Promise<unknown>;
 export interface RegisteredTool {
   definition: MCPToolDefinition;
   handler: ToolHandler;
+}
+
+// ==================== Git 管理类型 ====================
+
+/**
+ * Git 分支信息
+ */
+export interface GitBranch {
+  name: string;
+  current: boolean;
+  commit?: string;
+  label?: string;
+}
+
+/**
+ * Git 分支列表
+ */
+export interface GitBranchSummary {
+  all: string[];
+  branches: GitBranch[];
+  current?: string;
+  detached: boolean;
+}
+
+/**
+ * Git 状态信息
+ */
+export interface GitStatus {
+  isRepo: boolean;
+  staged: string[];
+  modified: string[];
+  deleted: string[];
+  untracked: string[];
+  conflicted: string[];
+  renamed: string[];
+  currentBranch?: string;
+  latestCommit?: string;
+  tracking?: string;
+  ahead: number;
+  behind: number;
+  notAdded: string[];
+}
+
+/**
+ * Git 提交记录
+ */
+export interface GitCommit {
+  hash: string;
+  message: string;
+  author: string;
+  date: string;
+  timestamp?: number;
+  body?: string;
+}
+
+/**
+ * Git 提交历史
+ */
+export interface GitCommitHistory {
+  total: number;
+  commits: GitCommit[];
+}
+
+/**
+ * Git 远程仓库信息
+ */
+export interface GitRemoteInfo {
+  name: string;
+  url: string;
+  refs?: {
+    fetch?: string;
+    push?: string;
+  };
+}
+
+/**
+ * Git 提交选项
+ */
+export interface GitCommitOptions {
+  author?: string;
+  sign?: boolean;
+  noVerify?: boolean;
+  amend?: boolean;
+}
+
+/**
+ * Git 推送选项
+ */
+export interface GitPushOptions {
+  force?: boolean;
+  setUpstream?: boolean;
+  forceWithLease?: boolean;
+  tags?: boolean;
+}
+
+/**
+ * Git 克隆选项
+ */
+export interface GitCloneOptions {
+  depth?: number;
+  branch?: string;
+  singleBranch?: boolean;
+  bare?: boolean;
+  mirror?: boolean;
+}
+
+/**
+ * PR 创建选项
+ */
+export interface PullRequestCreateOptions {
+  title: string;
+  body?: string;
+  base: string;
+  head: string;
+  labels?: string[];
+  reviewers?: string[];
+}
+
+/**
+ * Pull Request 信息
+ */
+export interface PullRequestInfo {
+  id: string;
+  url: string;
+  title: string;
+  body?: string;
+  state: 'open' | 'closed' | 'merged';
+  headBranch: string;
+  baseBranch: string;
+}
+
+/**
+ * 自定义错误类型：Git 操作错误
+ */
+export class GitOperationError extends Error {
+  public readonly operation: string;
+  public readonly workspacePath: string;
+  public readonly context?: LoggerContext;
+
+  constructor(
+    message: string,
+    operation: string,
+    workspacePath: string,
+    context?: LoggerContext
+  ) {
+    super(message);
+    this.name = 'GitOperationError';
+    this.operation = operation;
+    this.workspacePath = workspacePath;
+    this.context = context;
+    Object.setPrototypeOf(this, GitOperationError.prototype);
+  }
+}
+
+/**
+ * 自定义错误类型：环境管理错误
+ */
+export class EnvironmentError extends Error {
+  public readonly projectId?: string;
+  public readonly envName?: string;
+  public readonly context?: LoggerContext;
+
+  constructor(
+    message: string,
+    projectId?: string,
+    envName?: string,
+    context?: LoggerContext
+  ) {
+    super(message);
+    this.name = 'EnvironmentError';
+    this.projectId = projectId;
+    this.envName = envName;
+    this.context = context;
+    Object.setPrototypeOf(this, EnvironmentError.prototype);
+  }
+}
+
+/**
+ * 自定义错误类型：部署错误
+ */
+export class DeploymentError extends Error {
+  public readonly deploymentId?: string;
+  public readonly projectId?: string;
+  public readonly envName?: string;
+  public readonly context?: LoggerContext;
+
+  constructor(
+    message: string,
+    projectId?: string,
+    envName?: string,
+    deploymentId?: string,
+    context?: LoggerContext
+  ) {
+    super(message);
+    this.name = 'DeploymentError';
+    this.projectId = projectId;
+    this.envName = envName;
+    this.deploymentId = deploymentId;
+    this.context = context;
+    Object.setPrototypeOf(this, DeploymentError.prototype);
+  }
+}
+
+/**
+ * 自定义错误类型：Git 仓库未初始化错误
+ */
+export class GitRepoNotFoundError extends Error {
+  public readonly workspacePath: string;
+  public readonly context?: LoggerContext;
+
+  constructor(workspacePath: string, context?: LoggerContext) {
+    super(`Git 仓库不存在: ${workspacePath}`);
+    this.name = 'GitRepoNotFoundError';
+    this.workspacePath = workspacePath;
+    this.context = context;
+    Object.setPrototypeOf(this, GitRepoNotFoundError.prototype);
+  }
 }
 
 // ==================== JSON-RPC 2.0 类型 ====================

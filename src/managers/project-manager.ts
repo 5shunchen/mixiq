@@ -223,8 +223,8 @@ export class ProjectManager {
       const activeAgents = this.db.findAll(TABLE_NAMES.AGENT_INSTANCES, {
         where: {
           project_id: targetProjectId,
-          status: 'running',
-        } as Partial<AgentInstance>,
+          status: 'active',
+        } as Partial<unknown>,
       });
 
       return {

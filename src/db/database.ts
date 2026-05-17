@@ -9,6 +9,8 @@ import {
   Environment,
   AgentInstance,
   Deployment,
+  Workflow,
+  WorkflowRun,
   TABLE_NAMES,
   UpdateInput,
   WithoutTimestampsAndId,
@@ -76,6 +78,8 @@ type TableTypeMap = {
   environments: Environment;
   agent_instances: AgentInstance;
   deployments: Deployment;
+  workflows: Workflow;
+  workflow_runs: WorkflowRun;
 };
 
 type TableName = keyof TableTypeMap;
@@ -212,6 +216,7 @@ export class MixIQDatabase {
         project_id TEXT NOT NULL,
         name TEXT NOT NULL,
         servers TEXT NOT NULL DEFAULT '[]',
+        config TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (project_id) REFERENCES ${TABLE_NAMES.PROJECTS}(id) ON DELETE CASCADE
@@ -226,9 +231,13 @@ export class MixIQDatabase {
         id TEXT PRIMARY KEY,
         project_id TEXT NOT NULL,
         agent_type TEXT NOT NULL,
+        token TEXT NOT NULL,
         allowed_tools TEXT NOT NULL DEFAULT '[]',
-        status TEXT NOT NULL DEFAULT 'idle',
+        status TEXT NOT NULL DEFAULT 'inactive',
         context TEXT NOT NULL DEFAULT '{}',
+        history TEXT NOT NULL DEFAULT '[]',
+        audit_logs TEXT NOT NULL DEFAULT '[]',
+        config TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (project_id) REFERENCES ${TABLE_NAMES.PROJECTS}(id) ON DELETE CASCADE
@@ -246,6 +255,8 @@ export class MixIQDatabase {
         branch TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'pending',
         commit_sha TEXT NOT NULL,
+        output TEXT,
+        error TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (project_id) REFERENCES ${TABLE_NAMES.PROJECTS}(id) ON DELETE CASCADE
@@ -253,6 +264,56 @@ export class MixIQDatabase {
       CREATE INDEX IF NOT EXISTS idx_deployments_project_id ON ${TABLE_NAMES.DEPLOYMENTS}(project_id);
       CREATE INDEX IF NOT EXISTS idx_deployments_status ON ${TABLE_NAMES.DEPLOYMENTS}(status);
       CREATE INDEX IF NOT EXISTS idx_deployments_env_name ON ${TABLE_NAMES.DEPLOYMENTS}(env_name);
+    `);
+
+    // workflows 表
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ${TABLE_NAMES.WORKFLOWS} (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT,
+        version TEXT NOT NULL DEFAULT '1.0.0',
+        is_built_in INTEGER NOT NULL DEFAULT 0,
+        is_enabled INTEGER NOT NULL DEFAULT 1,
+        parameters TEXT NOT NULL DEFAULT '{}',
+        steps TEXT NOT NULL DEFAULT '[]',
+        tags TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_workflows_name ON ${TABLE_NAMES.WORKFLOWS}(name);
+      CREATE INDEX IF NOT EXISTS idx_workflows_is_built_in ON ${TABLE_NAMES.WORKFLOWS}(is_built_in);
+      CREATE INDEX IF NOT EXISTS idx_workflows_is_enabled ON ${TABLE_NAMES.WORKFLOWS}(is_enabled);
+    `);
+
+    // workflow_runs 表
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ${TABLE_NAMES.WORKFLOW_RUNS} (
+        id TEXT PRIMARY KEY,
+        workflow_id TEXT NOT NULL,
+        workflow_name TEXT NOT NULL,
+        project_id TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        parameters TEXT NOT NULL DEFAULT '{}',
+        context TEXT NOT NULL DEFAULT '{}',
+        steps TEXT NOT NULL DEFAULT '[]',
+        result TEXT,
+        error TEXT,
+        error_stack TEXT,
+        start_time TEXT NOT NULL,
+        end_time TEXT,
+        duration_ms INTEGER,
+        cancelled_at TEXT,
+        cancelled_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (workflow_id) REFERENCES ${TABLE_NAMES.WORKFLOWS}(id) ON DELETE CASCADE,
+        FOREIGN KEY (project_id) REFERENCES ${TABLE_NAMES.PROJECTS}(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_workflow_runs_workflow_id ON ${TABLE_NAMES.WORKFLOW_RUNS}(workflow_id);
+      CREATE INDEX IF NOT EXISTS idx_workflow_runs_project_id ON ${TABLE_NAMES.WORKFLOW_RUNS}(project_id);
+      CREATE INDEX IF NOT EXISTS idx_workflow_runs_status ON ${TABLE_NAMES.WORKFLOW_RUNS}(status);
+      CREATE INDEX IF NOT EXISTS idx_workflow_runs_start_time ON ${TABLE_NAMES.WORKFLOW_RUNS}(start_time);
     `);
 
     logger.debug('数据库表创建完成');
@@ -286,7 +347,10 @@ export class MixIQDatabase {
    */
   private serializeJsonFields(data: Record<string, unknown>): Record<string, unknown> {
     const result = { ...data };
-    const jsonFields = ['git_remotes', 'servers', 'allowed_tools', 'context'];
+    const jsonFields = [
+      'git_remotes', 'servers', 'allowed_tools', 'context', 'history', 'audit_logs', 'config',
+      'parameters', 'steps', 'tags', 'context', 'result'
+    ];
 
     for (const field of jsonFields) {
       if (field in result && result[field] !== undefined && typeof result[field] !== 'string') {
@@ -302,7 +366,10 @@ export class MixIQDatabase {
    */
   private deserializeRow<T>(row: Record<string, unknown>): T {
     const result: Record<string, unknown> = { ...row };
-    const jsonFields = ['git_remotes', 'servers', 'allowed_tools', 'context'];
+    const jsonFields = [
+      'git_remotes', 'servers', 'allowed_tools', 'context', 'history', 'audit_logs', 'config',
+      'parameters', 'steps', 'tags', 'result'
+    ];
 
     for (const field of jsonFields) {
       if (field in result && typeof result[field] === 'string') {
@@ -315,11 +382,33 @@ export class MixIQDatabase {
     }
 
     // 将时间字符串转换为 Date 对象
-    if ('created_at' in result && typeof result.created_at === 'string') {
-      result.created_at = new Date(result.created_at);
+    const dateFields = ['created_at', 'updated_at', 'start_time', 'end_time', 'cancelled_at'];
+    for (const field of dateFields) {
+      if (field in result && typeof result[field] === 'string') {
+        result[field] = new Date(result[field] as string);
+      }
     }
-    if ('updated_at' in result && typeof result.updated_at === 'string') {
-      result.updated_at = new Date(result.updated_at);
+
+    // 字段名映射（snake_case -> camelCase）
+    const fieldMappings: Record<string, string> = {
+      is_built_in: 'isBuiltIn',
+      is_enabled: 'isEnabled',
+      workflow_id: 'workflowId',
+      workflow_name: 'workflowName',
+      project_id: 'projectId',
+      start_time: 'startTime',
+      end_time: 'endTime',
+      duration_ms: 'durationMs',
+      cancelled_at: 'cancelledAt',
+      cancelled_by: 'cancelledBy',
+      error_stack: 'errorStack',
+    };
+
+    for (const [snakeCase, camelCase] of Object.entries(fieldMappings)) {
+      if (snakeCase in result) {
+        result[camelCase] = result[snakeCase];
+        delete result[snakeCase];
+      }
     }
 
     return result as unknown as T;
@@ -539,7 +628,7 @@ export class MixIQDatabase {
   }
 
   /**
-   * 自定义查询
+   * 自定义查询（返回数据）
    */
   public query<T = unknown>(sql: string, params: unknown[] = []): T[] {
     this.checkInitialized();
@@ -555,6 +644,27 @@ export class MixIQDatabase {
       throw new DatabaseError(
         `自定义查询失败: ${err.message}`,
         'QUERY_FAILED',
+        err
+      );
+    }
+  }
+
+  /**
+   * 执行 SQL 语句（不返回数据，适用于 UPDATE/DELETE）
+   */
+  public execute(sql: string, params: unknown[] = []): void {
+    this.checkInitialized();
+    if (!this.db) throw new DatabaseError('数据库未初始化', 'NOT_INITIALIZED');
+
+    try {
+      const stmt = this.db.prepare(sql);
+      stmt.run(...params);
+    } catch (error) {
+      const err = error as Error;
+      logger.error('SQL 执行失败', err, { sql, error: err.message });
+      throw new DatabaseError(
+        `SQL 执行失败: ${err.message}`,
+        'EXECUTE_FAILED',
         err
       );
     }
